@@ -1,5 +1,6 @@
 import SwiftUI
 import AVFoundation
+import HuggingFaceCache
 
 struct SpeechScreen: View {
     @EnvironmentObject var labModel: ModelLabViewModel
@@ -9,6 +10,15 @@ struct SpeechScreen: View {
     @State private var isGenerating = false
     @State private var outputInfo = ""
     @State private var audioPlayer: AVAudioPlayer?
+    @State private var engineMode: SpeechEngine = .macOS
+    @State private var qwen3ModelPath = ""
+    @State private var qwen3Speaker = ""
+    @State private var qwen3Instruct = ""
+
+    private enum SpeechEngine: String, CaseIterable {
+        case macOS = "macOS say"
+        case qwen3 = "Qwen3 TTS (MLX)"
+    }
 
     private let availableVoices = ["Samantha", "Daniel", "Karen", "Fiona", "Moira", "Veena", "Alex"]
 
@@ -36,22 +46,39 @@ struct SpeechScreen: View {
             }
             .padding(.horizontal)
 
-            // Parameters
+            // Engine + Parameters
             HStack(spacing: 20) {
                 VStack(alignment: .leading) {
-                    Text("Voice").font(.caption).foregroundColor(.secondary)
-                    Picker("Voice", selection: $voiceName) {
-                        ForEach(availableVoices, id: \.self) { voice in
-                            Text(voice).tag(voice)
+                    Text("Engine").font(.caption).foregroundColor(.secondary)
+                    Picker("Engine", selection: $engineMode) {
+                        ForEach(SpeechEngine.allCases, id: \.self) { mode in
+                            Text(mode.rawValue).tag(mode)
                         }
                     }
-                    .pickerStyle(.menu)
-                    .frame(width: 180)
+                    .pickerStyle(.segmented)
+                    .frame(width: 250)
+                    .onChange(of: engineMode) { _, _ in
+                        audioPlayer = nil
+                        outputInfo = ""
+                    }
                 }
-                VStack(alignment: .leading) {
-                    Text("Speaking Rate: \(String(format: "%.1f", speakingRate))x").font(.caption).foregroundColor(.secondary)
-                    Slider(value: $speakingRate, in: 0.5...3, step: 0.1)
-                        .frame(width: 200)
+
+                if engineMode == .macOS {
+                    VStack(alignment: .leading) {
+                        Text("Voice").font(.caption).foregroundColor(.secondary)
+                        Picker("Voice", selection: $voiceName) {
+                            ForEach(availableVoices, id: \.self) { voice in
+                                Text(voice).tag(voice)
+                            }
+                        }
+                        .pickerStyle(.menu)
+                        .frame(width: 180)
+                    }
+                    VStack(alignment: .leading) {
+                        Text("Speaking Rate: \(String(format: "%.1f", speakingRate))x").font(.caption).foregroundColor(.secondary)
+                        Slider(value: $speakingRate, in: 0.5...3, step: 0.1)
+                            .frame(width: 200)
+                    }
                 }
                 Spacer()
                 Button("Generate Speech") {
@@ -61,6 +88,42 @@ struct SpeechScreen: View {
                 .disabled(isGenerating)
             }
             .padding(.horizontal)
+
+            // Qwen3 TTS settings
+            if engineMode == .qwen3 {
+                HStack(spacing: 16) {
+                    VStack(alignment: .leading) {
+                        Text("Model Path").font(.caption).foregroundColor(.secondary)
+                        Picker("Model", selection: $qwen3ModelPath) {
+                            Text("Select a Qwen3 TTS model...").tag("")
+                            ForEach(labModel.discoverQwen3TTSModels(), id: \.1) { (repoID, path) in
+                                Text(repoID).tag(path)
+                            }
+                        }
+                        .pickerStyle(.menu)
+                        .frame(width: 350)
+                    }
+                }
+                .padding(.horizontal)
+
+                if !qwen3ModelPath.isEmpty {
+                    HStack(spacing: 16) {
+                        VStack(alignment: .leading) {
+                            Text("Speaker (optional)").font(.caption).foregroundColor(.secondary)
+                            TextField("e.g. Aiden", text: $qwen3Speaker)
+                                .textFieldStyle(.roundedBorder)
+                                .frame(width: 150)
+                        }
+                        VStack(alignment: .leading) {
+                            Text("Instruct / Style (optional)").font(.caption).foregroundColor(.secondary)
+                            TextField("e.g. Happy and energetic", text: $qwen3Instruct)
+                                .textFieldStyle(.roundedBorder)
+                                .frame(width: 250)
+                        }
+                    }
+                    .padding(.horizontal)
+                }
+            }
 
             Divider()
 
@@ -115,11 +178,31 @@ struct SpeechScreen: View {
         audioPlayer = nil
 
         Task {
-            let (info, audioData) = await labModel.runSpeechGeneration(
-                text: inputText,
-                voiceName: voiceName,
-                rate: speakingRate
-            )
+            let info: String
+            let audioData: Data?
+
+            switch engineMode {
+            case .macOS:
+                (info, audioData) = await labModel.runSpeechGeneration(
+                    text: inputText,
+                    voiceName: voiceName,
+                    rate: speakingRate
+                )
+            case .qwen3:
+                guard !qwen3ModelPath.isEmpty else {
+                    isGenerating = false
+                    outputInfo = "Please select a Qwen3 TTS model first."
+                    return
+                }
+                (info, audioData) = await labModel.runQwen3SpeechGeneration(
+                    text: inputText,
+                    modelPath: qwen3ModelPath,
+                    speaker: qwen3Speaker.isEmpty ? nil : qwen3Speaker,
+                    instruct: qwen3Instruct.isEmpty ? nil : qwen3Instruct,
+                    language: "english"
+                )
+            }
+
             isGenerating = false
             outputInfo = info
 

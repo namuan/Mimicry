@@ -123,6 +123,7 @@ final class ModelLabViewModel: ObservableObject {
     private var mlxService: MLXLanguageModelService?
     private var llamaService: LlamaCppLanguageModelService?
     private var speechService: SaySpeechService?
+    private var qwen3TTS: Qwen3TTSService?
 
     func initialize() async {
         let client = MockRepositoryClient(configuration: config)
@@ -130,6 +131,7 @@ final class ModelLabViewModel: ObservableObject {
         mlxService = MLXLanguageModelService(resolver: resolver!)
         llamaService = LlamaCppLanguageModelService(resolver: resolver!)
         speechService = SaySpeechService()
+        qwen3TTS = Qwen3TTSService()
 
         await refreshCacheStatus()
     }
@@ -326,5 +328,75 @@ final class ModelLabViewModel: ObservableObject {
             """
             return (errorInfo, nil)
         }
+    }
+
+    /// Generate speech using the vendored Qwen3 TTS model (MLX).
+    func runQwen3SpeechGeneration(text: String, modelPath: String, speaker: String? = nil, instruct: String? = nil, language: String = "english") async -> (String, Data?) {
+        guard let tts = qwen3TTS else {
+            return ("Qwen3 TTS service not initialized.", nil)
+        }
+        addLog("Loading Qwen3 TTS model from \(modelPath)...")
+        let loadStart = Date()
+        do {
+            try tts.load(from: modelPath)
+            let loadTime = Date().timeIntervalSince(loadStart)
+            addLog("Qwen3 TTS loaded in \(String(format: "%.1f", loadTime))s, type: \(tts.modelType), speakers: \(tts.speakers.joined(separator: ", "))")
+
+            let genStart = Date()
+            let (wavData, sampleRate, duration) = try tts.generate(
+                text: text,
+                speaker: speaker,
+                instruct: instruct,
+                language: language
+            )
+            let genTime = Date().timeIntervalSince(genStart)
+            let rtf = duration > 0 ? genTime / duration : 0
+            addLog("Qwen3 TTS generated: \(String(format: "%.2f", duration))s audio in \(String(format: "%.1f", genTime))s (RTF: \(String(format: "%.2f", rtf))x)")
+
+            let info = """
+            --- Qwen3 TTS Generation Results ---
+            Text length: \(text.count) chars
+            Model: \(tts.modelType)
+            Speaker: \(speaker ?? "default")
+            Instruct: \(instruct ?? "none")
+            Language: \(language)
+            ---
+            Duration: \(String(format: "%.2f", duration))s
+            Sample rate: \(sampleRate) Hz
+            Audio size: \(wavData.count) bytes
+            Load time: \(String(format: "%.1f", loadTime))s
+            Generation time: \(String(format: "%.1f", genTime))s (RTF: \(String(format: "%.2f", rtf))x)
+            ---
+            Status: Success (Qwen3 TTS via MLX)
+            """
+            return (info, wavData)
+        } catch {
+            addLog("Qwen3 TTS failed: \(error.localizedDescription)")
+            let errorInfo = """
+            --- Qwen3 TTS Generation Results ---
+            Status: FAILED
+            Error: \(error.localizedDescription)
+            """
+            return (errorInfo, nil)
+        }
+    }
+
+    /// Find Qwen3 TTS model paths in the HuggingFace cache.
+    func discoverQwen3TTSModels() -> [(String, String)] {
+        var results: [(String, String)] = []
+        for repo in unrecognisedRepositories {
+            if repo.repositoryID.lowercased().contains("qwen3") && repo.repositoryID.lowercased().contains("tts") {
+                if let hash = repo.snapshots.first {
+                    let cacheDir = CacheLayout.cacheDirectoryName(for: repo.repositoryID)
+                    let hubDir = config.hubCacheDirectory
+                    let snapshotDir = CacheLayout.snapshotDirectory(
+                        in: hubDir.appendingPathComponent(cacheDir),
+                        commit: hash
+                    )
+                    results.append((repo.repositoryID, snapshotDir.path))
+                }
+            }
+        }
+        return results
     }
 }
