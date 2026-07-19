@@ -14,7 +14,8 @@ struct ModelLabApp: App {
     init() {
         // Route MLX to CPU before any MLX lazy statics fire.
         // This avoids a Metal GPU conflict with llama.framework which also
-        // claims Metal resources and can cause SIGABRT in mlx_default_gpu_stream_new.
+        // claims Metal resources and can cause SIGABRT.
+        // withDefaultDevice is scoped-only; we need global CPU for the app lifetime.
         MLX.Device.setDefault(device: .cpu)
     }
 
