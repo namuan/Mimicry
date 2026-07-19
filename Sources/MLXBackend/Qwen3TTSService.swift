@@ -36,16 +36,15 @@ public class Qwen3TTSService: @unchecked Sendable {
         let samples: [Float]
         let actualSpeaker = speaker ?? speakers.first
 
-        if let spk = actualSpeaker {
-            if let inst = instruct, pipeline.supportsCustomVoice {
-                samples = pipeline.generateCustomVoice(text: text, speaker: spk, instruct: inst)
-            } else if let inst = instruct, pipeline.supportsVoiceDesign {
-                samples = pipeline.generateVoiceDesign(text: text, voiceDescription: inst)
-            } else {
-                samples = pipeline.generate(text: text, speaker: spk)
-            }
+        if pipeline.supportsCustomVoice, let spk = actualSpeaker, let inst = instruct {
+            samples = pipeline.generateCustomVoice(text: text, speaker: spk, instruct: inst)
+        } else if pipeline.supportsVoiceDesign, let inst = instruct {
+            samples = pipeline.generateVoiceDesign(text: text, voiceDescription: inst)
+        } else if let spk = actualSpeaker {
+            samples = pipeline.generate(text: text, speaker: spk)
         } else {
-            throw Qwen3TTSServiceError.needsSpeaker(modelType)
+            // Base model with no named speakers — use neutral generation
+            samples = pipeline.generate(text: text, speaker: "default")
         }
 
         let sampleRate = 24000

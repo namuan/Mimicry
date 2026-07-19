@@ -7,60 +7,38 @@ struct MLXSmokeTest {
         let hubDir = FileManager.default.homeDirectoryForCurrentUser
             .appendingPathComponent(".cache/huggingface/hub")
 
-        guard let modelDir = findQwen3TTSModel(in: hubDir) else {
-            print("No Qwen3 TTS model found.")
-            return
-        }
-
-        let service = Qwen3TTSService()
-        do {
-            try service.load(from: modelDir.path)
-        } catch {
-            print("Failed to load model: \(error)")
-            return
-        }
-        print("Model: \(service.modelType), Speakers: \(service.speakers.joined(separator: ", "))")
-
-        let speaker = service.speakers.first ?? "aiden"
-        let text = "The corridor was completely dark. Elena pressed her back against the cold wall."
-        print("Generating \"\(text)\" with speaker: \(speaker)")
-
-        let genStart = Date()
-        do {
-            let (data, rate, duration) = try service.generate(text: text, speaker: speaker, language: "english")
-            let genTime = Date().timeIntervalSince(genStart)
-            let rtf = duration > 0 ? genTime / duration : 0
-
-            let outURL = FileManager.default.homeDirectoryForCurrentUser
-                .appendingPathComponent("Desktop/qwen3_fixed.wav")
-            try data.write(to: outURL)
-
-            print("Duration: \(String(format: "%.2f", duration))s, \(rate)Hz, \(data.count) bytes")
-            print("Time: \(String(format: "%.1f", genTime))s (RTF: \(String(format: "%.2f", rtf))x)")
-            print("Saved: \(outURL.path)")
-            print("\n=== TEST PASSED ✅ ===")
-        } catch {
-            print("FAILED: \(error)")
-        }
-    }
-
-    private static func findQwen3TTSModel(in hubDir: URL) -> URL? {
-        guard let dirs = try? FileManager.default.contentsOfDirectory(atPath: hubDir.path) else { return nil }
-        for dirName in dirs.sorted() {
+        // Find all Qwen3 TTS models and test them
+        for dirName in (try? FileManager.default.contentsOfDirectory(atPath: hubDir.path)) ?? [] {
             guard dirName.hasPrefix("models--"),
                   dirName.lowercased().contains("qwen3"),
-                  dirName.lowercased().contains("tts"),
-                  dirName.lowercased().contains("custom") else { continue }
-            let snapshotsDir = URL(fileURLWithPath: dirName, relativeTo: hubDir)
-                .appendingPathComponent("snapshots")
-            guard let snapshots = try? FileManager.default.contentsOfDirectory(atPath: snapshotsDir.path),
-                  let hash = snapshots.first,
-                  let files = try? FileManager.default.contentsOfDirectory(atPath: snapshotsDir.appendingPathComponent(hash).path),
-                  files.contains(where: { $0.hasSuffix(".safetensors") }),
-                  files.contains(where: { $0 == "vocab.json" })
-            else { continue }
-            return snapshotsDir.appendingPathComponent(hash)
+                  dirName.lowercased().contains("tts") else { continue }
+            let snapshotsDir = URL(fileURLWithPath: dirName, relativeTo: hubDir).appendingPathComponent("snapshots")
+            guard let snaps = try? FileManager.default.contentsOfDirectory(atPath: snapshotsDir.path),
+                  let hash = snaps.first else { continue }
+            let modelDir = snapshotsDir.appendingPathComponent(hash)
+            guard let files = try? FileManager.default.contentsOfDirectory(atPath: modelDir.path),
+                  files.contains(where: { $0.hasSuffix(".safetensors") }) else { continue }
+
+            let shortName = String(dirName.dropFirst("models--".count))
+                .replacingOccurrences(of: "--", with: "/")
+            print("\n=== \(shortName) ===")
+            
+            let svc = Qwen3TTSService()
+            do {
+                try svc.load(from: modelDir.path)
+                print("Type: \(svc.modelType), Speakers: \(svc.speakers.isEmpty ? "none (default voice)" : svc.speakers.joined(separator: ", "))")
+                
+                let spk = svc.speakers.first
+                let text = "The corridor was completely dark."
+                print("Generating: \"\(text)\" speaker: \(spk ?? "default")")
+                
+                let start = Date()
+                let (data, _, duration) = try svc.generate(text: text, speaker: spk, language: "english")
+                let elapsed = Date().timeIntervalSince(start)
+                print("  \(String(format: "%.2f", duration))s, \(data.count)B, RTF: \(String(format: "%.2f", elapsed/duration))x — ✅")
+            } catch {
+                print("  ❌ \(error.localizedDescription)")
+            }
         }
-        return nil
     }
 }

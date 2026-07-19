@@ -101,6 +101,42 @@ public enum BundledModelCatalogue {
             licenseIdentifier: "TBD",
             gated: false
         ),
+        // Qwen3 TTS 0.6B CustomVoice — named speakers + style control
+        HuggingFaceModelSpecification(
+            id: "qwen3-tts-0.6b-customvoice",
+            displayName: "Qwen3 TTS 0.6B CustomVoice",
+            purpose: .speech,
+            backend: .mlx,
+            repositoryID: "Qwen/Qwen3-TTS-12Hz-0.6B-CustomVoice",
+            revision: "main",
+            requiredFiles: [
+                RequiredModelFile(path: "config.json"),
+                RequiredModelFile(path: "model.safetensors", expectedSize: 1_800_000_000),
+                RequiredModelFile(path: "vocab.json"),
+                RequiredModelFile(path: "merges.txt"),
+            ],
+            estimatedMemoryBytes: 2_500_000_000,
+            licenseIdentifier: "Apache-2.0",
+            gated: false
+        ),
+        // Qwen3 TTS 0.6B — voice description → styled speech
+        HuggingFaceModelSpecification(
+            id: "qwen3-tts-voice-design",
+            displayName: "Qwen3 TTS CustomVoice (Voice Design)",
+            purpose: .voiceDesign,
+            backend: .mlx,
+            repositoryID: "Qwen/Qwen3-TTS-12Hz-0.6B-CustomVoice",
+            revision: "main",
+            requiredFiles: [
+                RequiredModelFile(path: "config.json"),
+                RequiredModelFile(path: "model.safetensors", expectedSize: 1_800_000_000),
+                RequiredModelFile(path: "vocab.json"),
+                RequiredModelFile(path: "merges.txt"),
+            ],
+            estimatedMemoryBytes: 2_500_000_000,
+            licenseIdentifier: "Apache-2.0",
+            gated: false
+        ),
     ]
 
     /// Find models by purpose.
