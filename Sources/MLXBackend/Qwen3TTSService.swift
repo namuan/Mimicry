@@ -43,8 +43,7 @@ public class Qwen3TTSService: @unchecked Sendable {
         } else if let spk = actualSpeaker {
             samples = pipeline.generate(text: text, speaker: spk)
         } else {
-            // Base model with no named speakers — use neutral generation
-            samples = pipeline.generate(text: text, speaker: "default")
+            throw Qwen3TTSServiceError.needsSpeaker(modelType)
         }
 
         let sampleRate = 24000

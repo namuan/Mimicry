@@ -32,7 +32,7 @@ struct VoiceScreen: View {
                 .frame(width: 300)
 
                 if useQwen3 {
-                    let allModels = labModel.discoverQwen3TTSModels()
+                    let allModels = labModel.discoverQwen3TTSModels().filter { $0.0.localizedCaseInsensitiveContains("Custom") }
                     Picker("Model", selection: $qwen3ModelPath) {
                         Text("Select model...").tag("")
                         ForEach(allModels, id: \.1) { (repo, path) in
